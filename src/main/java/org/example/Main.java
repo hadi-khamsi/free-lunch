@@ -1,5 +1,6 @@
 package org.example;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -14,7 +15,13 @@ public class Main {
                 .GET()
                 .build();
         HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        ObjectMapper mapper = new ObjectMapper();
+        mapper.configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+        MarketsResponse data = mapper.readValue(response.body(), MarketsResponse.class);
 
-        System.out.println(response.body());
+        // Print each market
+        for (Market market : data.markets) {
+            System.out.println(market.ticker + " | bid: " + market.yes_bid_dollars + " | ask: " + market.yes_ask_dollars);
+        }
     }
 }
