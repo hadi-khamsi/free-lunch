@@ -1,5 +1,4 @@
-package com.freelunch;
-
+package com.freelunch.kalshi;
 import java.util.List;
 
 
