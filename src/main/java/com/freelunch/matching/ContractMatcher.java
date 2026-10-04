@@ -74,8 +74,6 @@ public class ContractMatcher {
 
             return new MatchResult(match, direction);
         } catch (Exception e) {
-            System.out.println("DEBUG exception: " + e);
-            System.out.println("DEBUG raw response: " + response);
             return new MatchResult(false, "none");
         }
     }
