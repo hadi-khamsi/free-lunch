@@ -61,7 +61,7 @@ static com.freelunch.kalshi.MarketsResponse fetchMarketsForSeries(String seriesT
     mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
     HttpRequest req = HttpRequest.newBuilder()
-            .uri(URI.create("https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=" + seriesTicker + "&status=open"))
+            .uri(URI.create("https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=" + seriesTicker + "&status=open&limit=1000"))
             .GET()
             .build();
 
@@ -108,6 +108,30 @@ static com.freelunch.kalshi.MarketsResponse fetchMarketsForSeries(String seriesT
 
         return allEvents;
     }
+
+    // pulls "unit" out of "Will Unit launch a token before Jan 1, 2027?"
+    static String tokenLaunchEntity(String title) {
+        String lower = title.toLowerCase();
+        int start = lower.indexOf("will ");
+        int end = lower.indexOf(" launch a token");
+        if (start < 0 || end < 0 || end <= start + 5) return null;
+        return lower.substring(start + 5, end).trim();
+    }
+
+    // true if the two entity phrases share a word or one contains the other
+    // (so "felix" ~ "felix protocol", "fomo" ~ "fomo.family")
+    static boolean entitiesOverlap(String a, String b) {
+        if (a == null || b == null) return false;
+        if (a.contains(b) || b.contains(a)) return true;
+        for (String wa : a.split("[^a-z0-9]+")) {
+            if (wa.length() < 3) continue;
+            for (String wb : b.split("[^a-z0-9]+")) {
+                if (wa.equals(wb)) return true;
+            }
+        }
+        return false;
+    }
+
     public static void main(String[] args) throws Exception {
     List<com.freelunch.kalshi.Series> cryptoSeries = fetchCryptoSeries();
     int rawSeriesCount = cryptoSeries.size();
@@ -173,5 +197,29 @@ static com.freelunch.kalshi.MarketsResponse fetchMarketsForSeries(String seriesT
     System.out.println("Polymarket crypto events: " + polyEvents.size() + " (excluded " + (rawPolyCount - polyEvents.size()) + " 'Up or Down')");
     System.out.println("Polymarket crypto markets: " + polyCryptoMarkets.size());
     System.out.println("Fetch took: " + elapsed + "ms");
-}
+    
+    List<String> kalshiTokenTitles = new ArrayList<>();
+    for (String t : seenTitles) {
+        if (t != null && t.toLowerCase().contains("launch a token")) {
+                kalshiTokenTitles.add(t);
+        }
+    }
+    List<String> polyTokenTitles = new ArrayList<>();
+    for (Event e : polyEvents) {
+        if (e.title != null && e.title.toLowerCase().contains("launch a token")) {
+                polyTokenTitles.add(e.title);
+                }
+    }
+    System.out.println("\n'launch a token' cluster: " + kalshiTokenTitles.size() + " Kalshi x " + polyTokenTitles.size() + " Polymarket pairs");
+    
+    ContractMatcher matcher = new ContractMatcher();
+    for (String kTitle : kalshiTokenTitles) {
+        String kEnt = tokenLaunchEntity(kTitle);
+        for (String pTitle : polyTokenTitles) {
+            if (!entitiesOverlap(kEnt, tokenLaunchEntity(pTitle))) continue; // blocking gate -- only LLM same-entity pairs
+            MatchResult r = matcher.compare(kTitle, pTitle);
+            System.out.println((r.match ? "MATCH(" + r.direction + ")" : "no match") + ": [" + kTitle + "]  <->  [" + pTitle + "]");
+        }
+    }
+    }
 }

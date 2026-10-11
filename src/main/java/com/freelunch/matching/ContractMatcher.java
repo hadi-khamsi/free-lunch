@@ -27,17 +27,20 @@ public class ContractMatcher {
 
     private String buildPrompt(String c1, String c2) {
         return String.format("""
-                Compare these two prediction market contracts. Respond with JSON only.
-                
+                You are matching prediction-market contracts across two venues to find the SAME underlying event.
+                Respond with JSON only.
+
                 Contract A: %s
                 Contract B: %s
-                
+
+                Judge whether a YES resolution on each refers to the same real-world outcome.
+                Ignore superficial wording, and ignore differences in date phrasing or an unspecified placeholder date like "by ___" -- those alone do NOT make them different events.
+                - "same" = YES on A means the same outcome as YES on B
+                - "inverse" = YES on A means NO on B
+                - "none" = unrelated underlying events
+
                 Respond in this exact format:
                 {"match": true/false, "direction": "same"/"inverse"/"none", "confidence": 0.0-1.0}
-                
-                - "same" = both YES outcomes mean the same thing
-                - "inverse" = A's YES is B's NO
-                - "none" = unrelated contracts
                 """, c1, c2);
     }
 
@@ -46,7 +49,8 @@ public class ContractMatcher {
                 {
                     "model": "openai/gpt-oss-20b",
                     "messages": [{"role": "user", "content": "%s"}],
-                    "temperature": 0
+                    "temperature": 0,
+                    "reasoning_effort": "low"
                 }
                 """.formatted(prompt.replace("\"", "\\\"").replace("\n", "\\n"));
 
