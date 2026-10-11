@@ -11,6 +11,7 @@ public class Market {
     public String no_ask_dollars;
     public String volume_24h_fp;
     public String expiration_time;
+    public String yes_sub_title;
 
     // Parsed for O(1) arb checks
     public double yesBid;
