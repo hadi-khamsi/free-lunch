@@ -3,6 +3,7 @@ package com.freelunch;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.freelunch.kalshi.KalshiClient;
 import com.freelunch.polymarket.Event;
 import com.freelunch.matching.ContractMatcher;
 import com.freelunch.matching.MatchResult;
@@ -21,62 +22,6 @@ import java.util.concurrent.Future;
 
 
 public class Main {
-
-    static List<com.freelunch.kalshi.Event> fetchKalshiEvents() throws Exception {
-        HttpClient client = HttpClient.newHttpClient();
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-
-        HttpRequest req = HttpRequest.newBuilder()
-                .uri(URI.create("https://api.elections.kalshi.com/trade-api/v2/events?limit=200&status=open"))
-                .GET()
-                .build();
-        HttpResponse<String> resp = client.send(req, HttpResponse.BodyHandlers.ofString());
-        com.freelunch.kalshi.EventsResponse data = mapper.readValue(resp.body(), com.freelunch.kalshi.EventsResponse.class);
-
-        List<com.freelunch.kalshi.Event> filtered = new ArrayList<>();
-        for (com.freelunch.kalshi.Event e : data.events) {
-            if (e.category.equals("Politics") || e.category.equals("Elections")) {
-                filtered.add(e);
-            }
-        }
-        return filtered;
-    }
-    static List<com.freelunch.kalshi.Series> fetchCryptoSeries() throws Exception {
-    HttpClient client = HttpClient.newHttpClient();
-    ObjectMapper mapper = new ObjectMapper();
-    mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-
-    HttpRequest req = HttpRequest.newBuilder()
-            .uri(URI.create("https://api.elections.kalshi.com/trade-api/v2/series?category=Crypto"))
-            .GET()
-            .build();
-    HttpResponse<String> resp = client.send(req, HttpResponse.BodyHandlers.ofString());
-    com.freelunch.kalshi.SeriesResponse data = mapper.readValue(resp.body(), com.freelunch.kalshi.SeriesResponse.class);
-    return data.series;
-}
-static com.freelunch.kalshi.MarketsResponse fetchMarketsForSeries(String seriesTicker) throws Exception {
-    HttpClient client = HttpClient.newHttpClient();
-    ObjectMapper mapper = new ObjectMapper();
-    mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-
-    HttpRequest req = HttpRequest.newBuilder()
-            .uri(URI.create("https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=" + seriesTicker + "&status=open&limit=1000"))
-            .GET()
-            .build();
-
-    for (int attempt = 1; attempt <= 4; attempt++) {
-        HttpResponse<String> resp = client.send(req, HttpResponse.BodyHandlers.ofString());
-        if (resp.statusCode() == 200) {
-            return mapper.readValue(resp.body(), com.freelunch.kalshi.MarketsResponse.class);
-        }
-        if (resp.statusCode() != 429 || attempt == 4) {
-            throw new RuntimeException("HTTP " + resp.statusCode() + " for " + seriesTicker + ": " + resp.body());
-        }
-        Thread.sleep(300L * attempt);
-    }
-    throw new RuntimeException("unreachable");
-}
 
     static List<Event> fetchPolymarketEvents() throws Exception {
         HttpClient client = HttpClient.newHttpClient();
@@ -133,93 +78,59 @@ static com.freelunch.kalshi.MarketsResponse fetchMarketsForSeries(String seriesT
     }
 
     public static void main(String[] args) throws Exception {
-    List<com.freelunch.kalshi.Series> cryptoSeries = fetchCryptoSeries();
-    int rawSeriesCount = cryptoSeries.size();
-    cryptoSeries.removeIf(s -> s.ticker.endsWith("15M")); // drop rolling 15-min series (KX...15M) -- unmatchable vs Polymarket's fixed-slot windows
-    System.out.println("Crypto series: " + cryptoSeries.size() + " (excluded " + (rawSeriesCount - cryptoSeries.size()) + " rolling 15-min)");
+        ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+        KalshiClient kalshi = new KalshiClient(executor);
+        long start = System.currentTimeMillis();
 
-    long start = System.currentTimeMillis();
-    ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+        Future<List<Event>> polyFuture = executor.submit(() -> fetchPolymarketEvents());
+        List<com.freelunch.kalshi.Market> allCryptoMarkets = kalshi.fetchCryptoMarkets();
 
-    Future<List<Event>> polyFuture = executor.submit(() -> fetchPolymarketEvents());
+        List<Event> polyEvents = polyFuture.get();
+        int rawPolyCount = polyEvents.size();
+        polyEvents.removeIf(e -> e.title != null && e.title.toLowerCase().contains("up or down")); // drop 5-min "Up or Down" markets (~81% of Polymarket crypto)
 
-    int batchSize = 10;
-    long pauseBetweenBatchesMs = 1500;
-
-    List<com.freelunch.kalshi.Market> allCryptoMarkets = new ArrayList<>();
-
-    for (int i = 0; i < cryptoSeries.size(); i += batchSize) {
-        int end = Math.min(i + batchSize, cryptoSeries.size());
-        List<com.freelunch.kalshi.Series> batch = cryptoSeries.subList(i, end);
-
-        List<Future<com.freelunch.kalshi.MarketsResponse>> futures = new ArrayList<>();
-        for (com.freelunch.kalshi.Series series : batch) {
-            futures.add(executor.submit(() -> fetchMarketsForSeries(series.ticker)));
-        }
-
-        for (Future<com.freelunch.kalshi.MarketsResponse> future : futures) {
-            try {
-                com.freelunch.kalshi.MarketsResponse result = future.get();
-                if (result.markets != null) {
-                    allCryptoMarkets.addAll(result.markets);
+        List<com.freelunch.polymarket.Market> polyCryptoMarkets = new ArrayList<>();
+        for (Event e : polyEvents) {
+                if (e.markets != null) {
+                polyCryptoMarkets.addAll(e.markets);
                 }
-            } catch (Exception e) {
-                Throwable cause = e.getCause() != null ? e.getCause() : e;
-                System.out.println("A series fetch failed, skipping: " + cause.getClass().getSimpleName() + " - " + cause.getMessage());
-            }
         }
 
-        if (end < cryptoSeries.size()) {
-            Thread.sleep(pauseBetweenBatchesMs);
+        Set<String> seenTitles = new HashSet<>();
+        for (com.freelunch.kalshi.Market m : allCryptoMarkets) {
+                seenTitles.add(m.title);
         }
-    }
 
-    List<Event> polyEvents = polyFuture.get();
-    int rawPolyCount = polyEvents.size();
-    polyEvents.removeIf(e -> e.title != null && e.title.toLowerCase().contains("up or down")); // drop 5-min "Up or Down" markets (~81% of Polymarket crypto)
+        executor.shutdown();
 
-    List<com.freelunch.polymarket.Market> polyCryptoMarkets = new ArrayList<>();
-    for (Event e : polyEvents) {
-        if (e.markets != null) {
-            polyCryptoMarkets.addAll(e.markets);
-        }
-    }
-
-    Set<String> seenTitles = new HashSet<>();
-    for (com.freelunch.kalshi.Market m : allCryptoMarkets) {
-        seenTitles.add(m.title);
-    }
-
-    executor.shutdown();
-
-    long elapsed = System.currentTimeMillis() - start;
-    System.out.println("Kalshi crypto markets: " + allCryptoMarkets.size() + " (" + seenTitles.size() + " distinct titles)");
-    System.out.println("Polymarket crypto events: " + polyEvents.size() + " (excluded " + (rawPolyCount - polyEvents.size()) + " 'Up or Down')");
-    System.out.println("Polymarket crypto markets: " + polyCryptoMarkets.size());
-    System.out.println("Fetch took: " + elapsed + "ms");
-    
-    List<String> kalshiTokenTitles = new ArrayList<>();
-    for (String t : seenTitles) {
-        if (t != null && t.toLowerCase().contains("launch a token")) {
-                kalshiTokenTitles.add(t);
-        }
-    }
-    List<String> polyTokenTitles = new ArrayList<>();
-    for (Event e : polyEvents) {
-        if (e.title != null && e.title.toLowerCase().contains("launch a token")) {
-                polyTokenTitles.add(e.title);
+        long elapsed = System.currentTimeMillis() - start;
+        System.out.println("Kalshi crypto markets: " + allCryptoMarkets.size() + " (" + seenTitles.size() + " distinct titles)");
+        System.out.println("Polymarket crypto events: " + polyEvents.size() + " (excluded " + (rawPolyCount - polyEvents.size()) + " 'Up or Down')");
+        System.out.println("Polymarket crypto markets: " + polyCryptoMarkets.size());
+        System.out.println("Fetch took: " + elapsed + "ms");
+        
+        List<String> kalshiTokenTitles = new ArrayList<>();
+        for (String t : seenTitles) {
+                if (t != null && t.toLowerCase().contains("launch a token")) {
+                        kalshiTokenTitles.add(t);
                 }
-    }
-    System.out.println("\n'launch a token' cluster: " + kalshiTokenTitles.size() + " Kalshi x " + polyTokenTitles.size() + " Polymarket pairs");
-    
-    ContractMatcher matcher = new ContractMatcher();
-    for (String kTitle : kalshiTokenTitles) {
-        String kEnt = tokenLaunchEntity(kTitle);
-        for (String pTitle : polyTokenTitles) {
-            if (!entitiesOverlap(kEnt, tokenLaunchEntity(pTitle))) continue; // blocking gate -- only LLM same-entity pairs
-            MatchResult r = matcher.compare(kTitle, pTitle);
-            System.out.println((r.match ? "MATCH(" + r.direction + ")" : "no match") + ": [" + kTitle + "]  <->  [" + pTitle + "]");
         }
-    }
+        List<String> polyTokenTitles = new ArrayList<>();
+        for (Event e : polyEvents) {
+                if (e.title != null && e.title.toLowerCase().contains("launch a token")) {
+                        polyTokenTitles.add(e.title);
+                        }
+        }
+        System.out.println("\n'launch a token' cluster: " + kalshiTokenTitles.size() + " Kalshi x " + polyTokenTitles.size() + " Polymarket pairs");
+        
+        ContractMatcher matcher = new ContractMatcher();
+        for (String kTitle : kalshiTokenTitles) {
+                String kEnt = tokenLaunchEntity(kTitle);
+                for (String pTitle : polyTokenTitles) {
+                if (!entitiesOverlap(kEnt, tokenLaunchEntity(pTitle))) continue; // blocking gate -- only LLM same-entity pairs
+                MatchResult r = matcher.compare(kTitle, pTitle);
+                System.out.println((r.match ? "MATCH(" + r.direction + ")" : "no match") + ": [" + kTitle + "]  <->  [" + pTitle + "]");
+                }
+        }
     }
 }
