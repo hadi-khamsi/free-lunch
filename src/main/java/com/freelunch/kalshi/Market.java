@@ -1,5 +1,8 @@
 package com.freelunch.kalshi;
 
+import com.freelunch.model.Contract;
+import com.freelunch.model.Venue;
+
 public class Market {
     public String ticker;
     public String event_ticker;
@@ -25,6 +28,14 @@ public class Market {
         noBid = parseOrZero(no_bid_dollars);
         noAsk = parseOrZero(no_ask_dollars);
     }
+
+    public Contract toContract() {
+        String fullTitle = title;
+        if (yes_sub_title != null && !yes_sub_title.isEmpty()) {
+            fullTitle = title + " - " + yes_sub_title;
+        }
+        return new Contract(Venue.KALSHI, ticker, fullTitle, parseOrZero(yes_ask_dollars), parseOrZero(no_ask_dollars));
+        }
 
     private double parseOrZero(String val) {
         if (val == null || val.isEmpty()) return 0.0;
