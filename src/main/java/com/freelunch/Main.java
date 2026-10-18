@@ -1,18 +1,11 @@
 package com.freelunch;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.freelunch.kalshi.KalshiClient;
 import com.freelunch.polymarket.Event;
+import com.freelunch.polymarket.PolymarketClient;
 import com.freelunch.matching.ContractMatcher;
 import com.freelunch.matching.MatchResult;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.HashSet;
 import java.util.Set;
@@ -20,39 +13,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
-
 public class Main {
-
-    static List<Event> fetchPolymarketEvents() throws Exception {
-        HttpClient client = HttpClient.newHttpClient();
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-
-        List<Event> allEvents = new ArrayList<>();
-        int pageSize = 100;
-        int offset = 0;
-
-        while (true) {
-            HttpRequest req = HttpRequest.newBuilder()
-                    .uri(URI.create("https://gamma-api.polymarket.com/events?tag_slug=crypto&limit=" + pageSize + "&offset=" + offset + "&active=true&closed=false"))
-                    .GET()
-                    .build();
-            HttpResponse<String> resp = client.send(req, HttpResponse.BodyHandlers.ofString());
-            JsonNode root = mapper.readTree(resp.body());
-            if (!root.isArray() || root.isEmpty()) {
-                break; // Gamma signals "past the end" with a non-array object, not an empty list
-            }
-            Event[] page = mapper.treeToValue(root, Event[].class);
-            allEvents.addAll(Arrays.asList(page));
-
-            if (page.length < pageSize) {
-                break;
-            }
-            offset += pageSize;
-        }
-
-        return allEvents;
-    }
 
     // pulls "unit" out of "Will Unit launch a token before Jan 1, 2027?"
     static String tokenLaunchEntity(String title) {
@@ -80,14 +41,13 @@ public class Main {
     public static void main(String[] args) throws Exception {
         ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
         KalshiClient kalshi = new KalshiClient(executor);
+        PolymarketClient poly = new PolymarketClient();
         long start = System.currentTimeMillis();
 
-        Future<List<Event>> polyFuture = executor.submit(() -> fetchPolymarketEvents());
+        Future<List<Event>> polyFuture = executor.submit(() -> poly.fetchCryptoEvents());
         List<com.freelunch.kalshi.Market> allCryptoMarkets = kalshi.fetchCryptoMarkets();
 
         List<Event> polyEvents = polyFuture.get();
-        int rawPolyCount = polyEvents.size();
-        polyEvents.removeIf(e -> e.title != null && e.title.toLowerCase().contains("up or down")); // drop 5-min "Up or Down" markets (~81% of Polymarket crypto)
 
         List<com.freelunch.polymarket.Market> polyCryptoMarkets = new ArrayList<>();
         for (Event e : polyEvents) {
@@ -105,7 +65,6 @@ public class Main {
 
         long elapsed = System.currentTimeMillis() - start;
         System.out.println("Kalshi crypto markets: " + allCryptoMarkets.size() + " (" + seenTitles.size() + " distinct titles)");
-        System.out.println("Polymarket crypto events: " + polyEvents.size() + " (excluded " + (rawPolyCount - polyEvents.size()) + " 'Up or Down')");
         System.out.println("Polymarket crypto markets: " + polyCryptoMarkets.size());
         System.out.println("Fetch took: " + elapsed + "ms");
         

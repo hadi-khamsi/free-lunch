@@ -29,11 +29,7 @@ import java.io.IOException;
  * - Responses wrap lists in an object ({"series": [...]}, {"markets": [...]}), hence the *Response classes.
  * - Kalshi's yes_bid/yes_ask are real top-of-book prices.
  *
- * Polymarket (Gamma API) differs:
- * - Only 2 levels: Event -> Market, and markets come nested inside each event, so one call returns both.
- * - Filtering is server-side (tag_slug=crypto), so we page through /events with limit/offset instead of fanning out.
- * - Responses are bare JSON arrays (no wrapper class); past the last page it returns an object, not [].
- * - Gamma's outcomePrices are indicative only; executable prices come from the separate CLOB API.
+ * See PolymarketClient for how Polymarket's API differs.
  */
 public class KalshiClient {
     private static final String BASE_URL = "https://api.elections.kalshi.com/trade-api/v2";
