@@ -2,6 +2,7 @@ package com.freelunch.kalshi;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.freelunch.model.Contract;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -49,10 +50,10 @@ public class KalshiClient {
     }
 
     /**
-     * Returns every open Kalshi crypto market, excluding rolling 15-minute series.
+     * Returns every open Kalshi crypto market as a Contract, excluding rolling 15-minute series.
      * Fetches series in batches of BATCH_SIZE with a pause between batches to avoid HTTP 429 rate limits.
      */
-    public List<Market> fetchCryptoMarkets() throws IOException, InterruptedException {
+    public List<Contract> fetchCryptoContracts() throws IOException, InterruptedException {
         List<Series> series = fetchCryptoSeries();
         int rawCount = series.size();
         // rolling 15-min series can't be time-aligned with Polymarket's fixed slots yet
@@ -81,7 +82,12 @@ public class KalshiClient {
                 Thread.sleep(PAUSE_BETWEEN_BATCHES_MS);
             }
         }
-        return all;
+
+        List<Contract> contracts = new ArrayList<>();
+        for (Market m : all) {
+            contracts.add(m.toContract());
+        }
+        return contracts;
     }
 
     private List<Series> fetchCryptoSeries() throws IOException, InterruptedException {

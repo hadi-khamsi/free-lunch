@@ -1,10 +1,10 @@
 package com.freelunch;
 
 import com.freelunch.kalshi.KalshiClient;
-import com.freelunch.polymarket.Event;
 import com.freelunch.polymarket.PolymarketClient;
 import com.freelunch.matching.ContractMatcher;
 import com.freelunch.matching.MatchResult;
+import com.freelunch.model.Contract;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.HashSet;
@@ -38,47 +38,44 @@ public class Main {
         return false;
     }
 
+    static Set<String> distinctEventTitles(List<Contract> contracts) {
+        Set<String> titles = new HashSet<>();
+        for (Contract c : contracts) {
+            titles.add(c.getEventTitle());
+        }
+        return titles;
+    }
+
     public static void main(String[] args) throws Exception {
         ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
         KalshiClient kalshi = new KalshiClient(executor);
         PolymarketClient poly = new PolymarketClient();
         long start = System.currentTimeMillis();
 
-        Future<List<Event>> polyFuture = executor.submit(() -> poly.fetchCryptoEvents());
-        List<com.freelunch.kalshi.Market> allCryptoMarkets = kalshi.fetchCryptoMarkets();
-
-        List<Event> polyEvents = polyFuture.get();
-
-        List<com.freelunch.polymarket.Market> polyCryptoMarkets = new ArrayList<>();
-        for (Event e : polyEvents) {
-                if (e.markets != null) {
-                polyCryptoMarkets.addAll(e.markets);
-                }
-        }
-
-        Set<String> seenTitles = new HashSet<>();
-        for (com.freelunch.kalshi.Market m : allCryptoMarkets) {
-                seenTitles.add(m.title);
-        }
-
+        Future<List<Contract>> polyFuture = executor.submit(() -> poly.fetchCryptoContracts());
+        List<Contract> kalshiContracts = kalshi.fetchCryptoContracts();
+        List<Contract> polyContracts = polyFuture.get();
         executor.shutdown();
 
+        Set<String> kalshiQuestions = distinctEventTitles(kalshiContracts);
+        Set<String> polyQuestions = distinctEventTitles(polyContracts);
+
         long elapsed = System.currentTimeMillis() - start;
-        System.out.println("Kalshi crypto markets: " + allCryptoMarkets.size() + " (" + seenTitles.size() + " distinct titles)");
-        System.out.println("Polymarket crypto markets: " + polyCryptoMarkets.size());
+        System.out.println("Kalshi crypto contracts: " + kalshiContracts.size() + " (" + kalshiQuestions.size() + " distinct questions)");
+        System.out.println("Polymarket crypto contracts: " + polyContracts.size() + " (" + polyQuestions.size() + " distinct questions)");
         System.out.println("Fetch took: " + elapsed + "ms");
-        
+
         List<String> kalshiTokenTitles = new ArrayList<>();
-        for (String t : seenTitles) {
+        for (String t : kalshiQuestions) {
                 if (t != null && t.toLowerCase().contains("launch a token")) {
                         kalshiTokenTitles.add(t);
                 }
         }
         List<String> polyTokenTitles = new ArrayList<>();
-        for (Event e : polyEvents) {
-                if (e.title != null && e.title.toLowerCase().contains("launch a token")) {
-                        polyTokenTitles.add(e.title);
-                        }
+        for (String t : polyQuestions) {
+                if (t != null && t.toLowerCase().contains("launch a token")) {
+                        polyTokenTitles.add(t);
+                }
         }
         System.out.println("\n'launch a token' cluster: " + kalshiTokenTitles.size() + " Kalshi x " + polyTokenTitles.size() + " Polymarket pairs");
         

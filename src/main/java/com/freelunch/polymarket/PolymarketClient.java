@@ -3,6 +3,7 @@ package com.freelunch.polymarket;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.freelunch.model.Contract;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -35,10 +36,10 @@ public class PolymarketClient {
     }
 
     /**
-     * Returns every active Polymarket crypto event (with its markets nested inside),
-     * excluding the 5-minute "Up or Down" events.
+     * Returns every market in every active Polymarket crypto event as a Contract,
+     * excluding the 5-minute "Up or Down" events. Each Contract's eventTitle is its parent event's title.
      */
-    public List<Event> fetchCryptoEvents() throws IOException, InterruptedException {
+    public List<Contract> fetchCryptoContracts() throws IOException, InterruptedException {
         List<Event> allEvents = new ArrayList<>();
         int offset = 0;
 
@@ -63,7 +64,17 @@ public class PolymarketClient {
         // 5-min "Up or Down" slots can't be time-aligned with Kalshi's rolling windows yet
         allEvents.removeIf(e -> e.title != null && e.title.toLowerCase().contains("up or down"));
         System.out.println("Polymarket crypto events: " + allEvents.size() + " (excluded " + (rawCount - allEvents.size()) + " 'Up or Down')");
-        return allEvents;
+
+        List<Contract> contracts = new ArrayList<>();
+        for (Event e : allEvents) {
+            if (e.markets == null) {
+                continue;
+            }
+            for (Market m : e.markets) {
+                contracts.add(m.toContract(e.title));
+            }
+        }
+        return contracts;
     }
 
     private HttpResponse<String> get(String url) throws IOException, InterruptedException {
