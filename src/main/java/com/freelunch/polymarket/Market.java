@@ -1,5 +1,8 @@
 package com.freelunch.polymarket;
 
+import com.freelunch.model.Contract;
+import com.freelunch.model.Venue;
+
 public class Market {
     public String id;
     public String question;
@@ -20,5 +23,10 @@ public class Market {
             yesPrice = Double.parseDouble(parts[0].trim());
             noPrice = Double.parseDouble(parts[1].trim());
         }
+    }
+
+    public Contract toContract() {
+        parsePrices();
+        return new Contract(Venue.POLYMARKET, id, question, yesPrice, noPrice);
     }
 }
