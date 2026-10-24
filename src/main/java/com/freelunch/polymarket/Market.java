@@ -25,8 +25,8 @@ public class Market {
         }
     }
 
-    public Contract toContract() {
+    public Contract toContract(String eventTitle) {
         parsePrices();
-        return new Contract(Venue.POLYMARKET, id, question, yesPrice, noPrice);
+        return new Contract(Venue.POLYMARKET, id, question, eventTitle, yesPrice, noPrice);
     }
 }

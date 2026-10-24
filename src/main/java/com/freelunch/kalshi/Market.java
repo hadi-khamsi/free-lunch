@@ -34,7 +34,7 @@ public class Market {
         if (yes_sub_title != null && !yes_sub_title.isEmpty()) {
             fullTitle = title + " - " + yes_sub_title;
         }
-        return new Contract(Venue.KALSHI, ticker, fullTitle, parseOrZero(yes_ask_dollars), parseOrZero(no_ask_dollars));
+        return new Contract(Venue.KALSHI, ticker, fullTitle, title, parseOrZero(yes_ask_dollars), parseOrZero(no_ask_dollars));
         }
 
     private double parseOrZero(String val) {
