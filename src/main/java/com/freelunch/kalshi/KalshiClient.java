@@ -3,6 +3,7 @@ package com.freelunch.kalshi;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.freelunch.model.Contract;
+import com.freelunch.venue.VenueClient;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -32,7 +33,7 @@ import java.io.IOException;
  *
  * See PolymarketClient for how Polymarket's API differs.
  */
-public class KalshiClient {
+public class KalshiClient implements VenueClient {
     private static final String BASE_URL = "https://api.elections.kalshi.com/trade-api/v2";
     private static final int BATCH_SIZE = 10;
     private static final long PAUSE_BETWEEN_BATCHES_MS = 1500;
@@ -53,6 +54,7 @@ public class KalshiClient {
      * Returns every open Kalshi crypto market as a Contract, excluding rolling 15-minute series.
      * Fetches series in batches of BATCH_SIZE with a pause between batches to avoid HTTP 429 rate limits.
      */
+    @Override
     public List<Contract> fetchCryptoContracts() throws IOException, InterruptedException {
         List<Series> series = fetchCryptoSeries();
         int rawCount = series.size();

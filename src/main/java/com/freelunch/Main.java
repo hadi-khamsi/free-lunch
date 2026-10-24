@@ -5,6 +5,8 @@ import com.freelunch.polymarket.PolymarketClient;
 import com.freelunch.matching.ContractMatcher;
 import com.freelunch.matching.MatchResult;
 import com.freelunch.model.Contract;
+import com.freelunch.model.Venue;
+import com.freelunch.venue.VenueClient;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.HashSet;
@@ -48,14 +50,29 @@ public class Main {
 
     public static void main(String[] args) throws Exception {
         ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
-        KalshiClient kalshi = new KalshiClient(executor);
-        PolymarketClient poly = new PolymarketClient();
+        List<VenueClient> clients = List.of(new KalshiClient(executor), new PolymarketClient());
         long start = System.currentTimeMillis();
 
-        Future<List<Contract>> polyFuture = executor.submit(() -> poly.fetchCryptoContracts());
-        List<Contract> kalshiContracts = kalshi.fetchCryptoContracts();
-        List<Contract> polyContracts = polyFuture.get();
+        List<Future<List<Contract>>> futures = new ArrayList<>();
+        for (VenueClient client : clients) {
+            futures.add(executor.submit(() -> client.fetchCryptoContracts()));
+        }
+
+        List<Contract> allContracts = new ArrayList<>();
+        for (Future<List<Contract>> f : futures) {
+            allContracts.addAll(f.get());
+        }
         executor.shutdown();
+
+        List<Contract> kalshiContracts = new ArrayList<>();
+        List<Contract> polyContracts = new ArrayList<>();
+        for (Contract c : allContracts) {
+            if (c.getVenue() == Venue.KALSHI) {
+                kalshiContracts.add(c);
+            } else {
+                polyContracts.add(c);
+            }
+        }
 
         Set<String> kalshiQuestions = distinctEventTitles(kalshiContracts);
         Set<String> polyQuestions = distinctEventTitles(polyContracts);

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.freelunch.model.Contract;
+import com.freelunch.venue.VenueClient;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -22,7 +23,7 @@ import java.util.List;
  * - Responses are bare JSON arrays (no wrapper class); past the last page it returns an object, not [].
  * - Gamma's outcomePrices are indicative only; executable prices come from the separate CLOB API.
  */
-public class PolymarketClient {
+public class PolymarketClient implements VenueClient {
     private static final String BASE_URL = "https://gamma-api.polymarket.com";
     private static final int PAGE_SIZE = 100;
 
@@ -39,6 +40,7 @@ public class PolymarketClient {
      * Returns every market in every active Polymarket crypto event as a Contract,
      * excluding the 5-minute "Up or Down" events. Each Contract's eventTitle is its parent event's title.
      */
+    @Override
     public List<Contract> fetchCryptoContracts() throws IOException, InterruptedException {
         List<Event> allEvents = new ArrayList<>();
         int offset = 0;
