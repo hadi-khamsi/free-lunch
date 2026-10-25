@@ -1,5 +1,6 @@
 package com.freelunch.matching;
 
+import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -8,6 +9,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 public class ContractMatcher {
+    private static final int MAX_ATTEMPTS = 5;
+
     private final HttpClient client;
     private final String apiKey;
 
@@ -61,8 +64,20 @@ public class ContractMatcher {
                 .POST(HttpRequest.BodyPublishers.ofString(body))
                 .build();
 
-        HttpResponse<String> resp = client.send(req, HttpResponse.BodyHandlers.ofString());
-        return resp.body();
+        for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+            HttpResponse<String> resp = client.send(req, HttpResponse.BodyHandlers.ofString());
+            if (resp.statusCode() == 200) {
+                return resp.body();
+            }
+            if (resp.statusCode() != 429) {
+                throw new IOException("Groq HTTP " + resp.statusCode() + ": " + resp.body());
+            }
+            String retryAfter = resp.headers().firstValue("retry-after").orElse("2");
+            long waitMs = (long) (Double.parseDouble(retryAfter) * 1000);
+            System.out.println("Groq rate-limited, waiting " + waitMs + "ms (attempt " + attempt + ")");
+            Thread.sleep(waitMs);
+        }
+        throw new IOException("Groq still rate-limited after " + MAX_ATTEMPTS + " attempts");
     }
 
     private final ObjectMapper mapper = new ObjectMapper();

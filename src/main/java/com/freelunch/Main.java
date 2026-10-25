@@ -64,7 +64,7 @@ public class Main {
         EntityBlocker blocker = new EntityBlocker();
         List<CandidatePair> pairs = blocker.candidatePairs(kalshiQuestions, polyQuestions);
         System.out.println("\nCandidate pairs for the LLM: " + pairs.size());
-        if (pairs.size() > 100) {
+        if (pairs.size() > 300) {
             for (CandidatePair pair : pairs.subList(0, 30)) {
                 System.out.println("  " + pair);
             }
