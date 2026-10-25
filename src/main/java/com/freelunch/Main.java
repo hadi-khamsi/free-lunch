@@ -4,6 +4,8 @@ import com.freelunch.kalshi.KalshiClient;
 import com.freelunch.polymarket.PolymarketClient;
 import com.freelunch.matching.ContractMatcher;
 import com.freelunch.matching.MatchResult;
+import com.freelunch.matching.CandidatePair;
+import com.freelunch.matching.EntityBlocker;
 import com.freelunch.model.Contract;
 import com.freelunch.model.Venue;
 import com.freelunch.venue.VenueClient;
@@ -16,29 +18,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 public class Main {
-
-    // pulls "unit" out of "Will Unit launch a token before Jan 1, 2027?"
-    static String tokenLaunchEntity(String title) {
-        String lower = title.toLowerCase();
-        int start = lower.indexOf("will ");
-        int end = lower.indexOf(" launch a token");
-        if (start < 0 || end < 0 || end <= start + 5) return null;
-        return lower.substring(start + 5, end).trim();
-    }
-
-    // true if the two entity phrases share a word or one contains the other
-    // (so "felix" ~ "felix protocol", "fomo" ~ "fomo.family")
-    static boolean entitiesOverlap(String a, String b) {
-        if (a == null || b == null) return false;
-        if (a.contains(b) || b.contains(a)) return true;
-        for (String wa : a.split("[^a-z0-9]+")) {
-            if (wa.length() < 3) continue;
-            for (String wb : b.split("[^a-z0-9]+")) {
-                if (wa.equals(wb)) return true;
-            }
-        }
-        return false;
-    }
 
     static Set<String> distinctEventTitles(List<Contract> contracts) {
         Set<String> titles = new HashSet<>();
@@ -82,28 +61,14 @@ public class Main {
         System.out.println("Polymarket crypto contracts: " + polyContracts.size() + " (" + polyQuestions.size() + " distinct questions)");
         System.out.println("Fetch took: " + elapsed + "ms");
 
-        List<String> kalshiTokenTitles = new ArrayList<>();
-        for (String t : kalshiQuestions) {
-                if (t != null && t.toLowerCase().contains("launch a token")) {
-                        kalshiTokenTitles.add(t);
-                }
-        }
-        List<String> polyTokenTitles = new ArrayList<>();
-        for (String t : polyQuestions) {
-                if (t != null && t.toLowerCase().contains("launch a token")) {
-                        polyTokenTitles.add(t);
-                }
-        }
-        System.out.println("\n'launch a token' cluster: " + kalshiTokenTitles.size() + " Kalshi x " + polyTokenTitles.size() + " Polymarket pairs");
-        
+        EntityBlocker blocker = new EntityBlocker();
+        List<CandidatePair> pairs = blocker.candidatePairs(kalshiQuestions, polyQuestions);
+        System.out.println("\nCandidate pairs for the LLM: " + pairs.size());
+
         ContractMatcher matcher = new ContractMatcher();
-        for (String kTitle : kalshiTokenTitles) {
-                String kEnt = tokenLaunchEntity(kTitle);
-                for (String pTitle : polyTokenTitles) {
-                if (!entitiesOverlap(kEnt, tokenLaunchEntity(pTitle))) continue; // blocking gate -- only LLM same-entity pairs
-                MatchResult r = matcher.compare(kTitle, pTitle);
-                System.out.println((r.match ? "MATCH(" + r.direction + ")" : "no match") + ": [" + kTitle + "]  <->  [" + pTitle + "]");
-                }
+        for (CandidatePair pair : pairs) {
+            MatchResult r = matcher.compare(pair.getKalshiQuestion(), pair.getPolyQuestion());
+            System.out.println((r.match ? "MATCH(" + r.direction + ")" : "no match") + ": " + pair);
         }
     }
 }
