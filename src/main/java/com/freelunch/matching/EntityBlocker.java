@@ -25,9 +25,6 @@ public class EntityBlocker {
         if (a == null || b == null) {
             return false;
         }
-        if (a.contains(b) || b.contains(a)) {
-            return true;
-        }
         for (String wa : a.split("[^a-z0-9]+")) {
             if (wa.length() < 3) {
                 continue;
